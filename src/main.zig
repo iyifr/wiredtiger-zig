@@ -6,15 +6,9 @@ const c = @cImport({
 const DB_CURSOR = struct {
     cursor: ?*c.WT_CURSOR = null,
     table: [*c]const u8,
-    rawMode: bool,
-    overwrite: ?[]const u8 = null,
 
-    fn open(self: *DB_CURSOR, session: ?*c.WT_SESSION) c_int {
-        const config = if (self.overwrite) |_|
-            if (self.rawMode) "raw,overwrite=false" else "overwrite=false"
-        else
-            if (self.rawMode) "raw" else null;
-        const ret = (session.?.open_cursor).?(session.?, self.table, null, config, &self.cursor);
+    fn open(self: *DB_CURSOR, session: ?*c.WT_SESSION, config: [*c]const u8) c_int {
+        const ret = (session.?.open_cursor).?(session.?, self.table, null, config orelse null, &self.cursor);
         return ret;
     }
 
@@ -38,18 +32,24 @@ const DB_CURSOR = struct {
         return (self.cursor.?.reset).?(self.cursor.?);
     }
 
-    fn forward_scan(self: *DB_CURSOR, key_ptr: *[*:0]const u8, value_ptr: *[*:0]const u8) void {
-        while ((self.cursor.?.next).?(self.cursor) == 0) {
+    fn forward_scan(self: *DB_CURSOR, key_ptr: *[*:0]const u8, value_ptr: *[*:0]const u8) bool {
+        const ret = (self.cursor.?.next).?(self.cursor);
+        if (ret == 0) {
             _ = (self.cursor.?.get_key).?(self.cursor.?, key_ptr);
             _ = (self.cursor.?.get_value).?(self.cursor.?, value_ptr);
+            return true;
         }
+        return false;
     }
 
-    fn backward_scan(self: *DB_CURSOR, key_ptr: *[*:0]const u8, value_ptr: *[*:0]const u8) void {
-        while ((self.cursor.?.prev).?(self.cursor) == 0) {
+    fn backward_scan(self: *DB_CURSOR, key_ptr: *[*:0]const u8, value_ptr: *[*:0]const u8) bool {
+        const ret = (self.cursor.?.prev).?(self.cursor);
+        if (ret == 0) {
             _ = (self.cursor.?.get_key).?(self.cursor.?, key_ptr);
             _ = (self.cursor.?.get_value).?(self.cursor.?, value_ptr);
+            return true;
         }
+        return false;
     }
 };
 
@@ -88,10 +88,9 @@ pub fn main() !void {
 
     var myCursor = DB_CURSOR{
         .table = "table:test_table",
-        .rawMode = false,
     };
 
-    const cursor_open_ret = myCursor.open(session);
+    const cursor_open_ret = myCursor.open(session, null);
     if (cursor_open_ret != 0) {
         const err = c.wiredtiger_strerror(cursor_open_ret);
         std.debug.print("Cursor error: {s}\n", .{err});
@@ -101,6 +100,9 @@ pub fn main() !void {
 
     myCursor.setKey("keyyyyys");
     myCursor.setValue("value");
+
+    myCursor.setKey("key3");
+    myCursor.setValue("value3");
     _ = myCursor.insert();
 
     const cursor_reset_ret = myCursor.reset();
@@ -114,7 +116,8 @@ pub fn main() !void {
     var key: [*:0]const u8 = undefined;
     var value: [*:0]const u8 = undefined;
 
-    myCursor.forward_scan(&key, &value);
-
-    std.debug.print("Key: {s} | Value: {s}\n", .{ key, value });
+    while (myCursor.forward_scan(&key, &value)) {
+        std.debug.print("Key: {s} | Value: {s}\n", .{ key, value });
+        // Process key/value here while they're still valid
+    }
 }
