@@ -1,8 +1,12 @@
 ## Wiredtiger-Zig
 
-An experimental Zig wrapper for the WiredTiger database library.
+An experimental KV store written in Zig using the WiredTiger storage engine.
+
+(Experimental, in progress)
 
 ### Usage
+
+Disclaimer: This is not the current state of the code, just a potential API design.
 
 ```zig
 const wtdb = @import("wtdb");
